@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+ENV/
+env/
+.env
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Cursor
+.cursor/
+
+# Data (keep raw exports out of git by default)
+PARM/data/
+OpenRocket-Automation/data/
+**/data/exports/
+**/data/aggregate/
+
+# Model artifacts
+*.onnx
+*.pt
+*.pth
+
+# Logs
+*.log
+
