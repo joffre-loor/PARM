@@ -27,13 +27,16 @@ desktop.ini
 # Cursor
 .cursor/
 
-# Data (keep raw exports out of git by default)
-PARM/data/
-OpenRocket-Automation/data/
-**/data/exports/
-**/data/aggregate/
+# PARM generated data/artifacts (keep folder structure via .gitkeep)
+PARM/data/**
+!PARM/data/.gitkeep
+!PARM/data/**/.gitkeep
 
-# Model artifacts
+PARM/artifacts/**
+!PARM/artifacts/.gitkeep
+!PARM/artifacts/**/.gitkeep
+
+# Model artifacts (anywhere)
 *.onnx
 *.pt
 *.pth

@@ -2,7 +2,7 @@
 
 This folder contains the **PARM controller model** implemented as a **Physics-Informed Neural Network (PINN)** for predicting/mitigating resonance by issuing a **temporary torque reduction** command during “danger windows” (approaching phase drift / resonance buildup).
 
-The implementation lives in `PARM/model.py`.
+The implementation lives in the `PARM/parm/` package. `PARM/model.py` re-exports the current API surface.
 
 ---
 
@@ -20,13 +20,13 @@ The implementation lives in `PARM/model.py`.
    - **Vertical velocity** `v_z` (m/s)
 
 3. **Rolling-window frequency representation (STFT step)**
-   - At each timestep \(i\), PARM looks back over a **rolling window** of the most recent vertical acceleration samples:
+- At each timestep \(i\), PARM looks back over a **rolling window** of the most recent vertical acceleration samples:
      \[
        a_z[i-N], \dots, a_z[i-1]
      \]
    - A Short-Time Fourier Transform (STFT)-style feature is computed from the window.
    - In code, this is implemented as a **Hann-windowed FFT of the rolling window** (a single STFT frame) for efficiency:
-     - See `stft_features_from_window()` in `model.py`.
+  - See `stft_features_from_window()` in `parm/features.py` (also re-exported from `model.py`).
    - The result is a compact **magnitude spectrum feature vector** `stft_x` used to detect frequency content associated with resonance/phase drift.
 
 4. **PINN controller produces a corrective torque command**
@@ -49,7 +49,7 @@ The implementation lives in `PARM/model.py`.
 
 ## Model architecture (what’s inside `ParmPINN`)
 
-Class: `ParmPINN` in `model.py`
+Class: `ParmPINN` in `parm/network.py` (also re-exported from `model.py`)
 
 ### Inputs
 
@@ -145,20 +145,54 @@ Important design choice:
 
 ## How to train (quick start)
 
-From the repository root (recommended: use the CLI trainer in `PARM/train.py`):
+From inside the `PARM/` repo (recommended: use the CLI trainer in `tools/train.py`):
 
 ```bash
-python -m PARM.train --exports "OpenRocket-Automation\\data\\exports\\*.csv"
+python -m tools.train --exports "data\\train\\*.csv"
+```
+
+If you deleted the per-simulation split files and kept only the aggregated files, you can train from:
+
+```bash
+python -m tools.train --exports "data\\aggregate\\train.csv"
 ```
 
 This produces:
 
-- `parm_controller.pt` (PyTorch weights)
-- `parm_controller.onnx` (frozen controller for deterministic inference)
+- `artifacts/weights/parm_controller.pt` (PyTorch weights)
+- `artifacts/onnx/parm_controller.onnx` (frozen controller for deterministic inference)
 
-You can also train directly from Python using `main_openrocket_exports()` in `model.py`.
+PARM will create rolling-window samples and then do randomized train/val/test splits over those samples.
+Avoid shuffling raw CSV rows yourself; it breaks the time-based rolling-window FFT features.
+
+### (Optional) Build shuffled sample datasets
+
+If you want to materialize the shuffled/split samples for inspection/debugging:
+
+```bash
+python -m tools.build_dataset --exports "data\\aggregate\\train.csv" --seed 42 --val-frac 0.1 --test-frac 0.1
+```
+
+This writes:
+- `artifacts/datasets/train.npz`
+- `artifacts/datasets/val.npz`
+- `artifacts/datasets/test.npz`
+- `artifacts/datasets/manifest.json`
 
 ---
+
+## How to test (offline evaluation)
+
+After training, evaluate on held-out data (recommended: `data/aggregate/test.csv`):
+
+```bash
+python -m tools.eval --weights "artifacts\\weights\\parm_controller.pt" --exports "data\\aggregate\\test.csv"
+```
+
+This prints and writes `artifacts/metrics/eval_metrics.json` containing:
+- mean total loss
+- mean physics residual loss
+- basic statistics of the controller output (torque reduction)
 
 ## What you must tune for your motor / structure
 
