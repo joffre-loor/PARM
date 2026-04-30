@@ -9,7 +9,7 @@ import torch
 class Config:
     # Rolling window/STFT config
     window_size: int = 128
-    fft_bins: int = 64  # number of magnitude bins from the windowed FFT (excluding DC)
+    fft_bins: int = 64  # number of retained FFT bins (excluding DC)
     fft_log1p: bool = True
 
     # Training
@@ -41,3 +41,15 @@ class Config:
 
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
+    @property
+    def spectral_feature_dim(self) -> int:
+        """
+        Total spectral feature width consumed by the neural controller.
+
+        Layout:
+        - acceleration magnitude: fft_bins
+        - acceleration phase as cos/sin: 2 * fft_bins
+        - accel-vs-thrust cross phase as cos/sin: 2 * fft_bins
+        - cross-phase drift inside the window as cos/sin: 2 * fft_bins
+        """
+        return 7 * int(self.fft_bins)

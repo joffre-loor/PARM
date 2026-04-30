@@ -51,7 +51,7 @@ def physics_residual_loss(
 
 def total_loss(batch: Dict[str, torch.Tensor], model: ParmPINN, cfg: Config) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     scalar_x = batch["scalar_x"].to(cfg.device)  # (B, 4)
-    stft_x = batch["stft_x"].to(cfg.device)  # (B, fft_bins)
+    spectral_x = batch["spectral_x"].to(cfg.device)  # (B, spectral_feature_dim)
     y = batch["y"].to(cfg.device)  # (B, 1) (placeholder if unavailable)
 
     # time needs gradients for autograd-based derivatives
@@ -63,7 +63,7 @@ def total_loss(batch: Dict[str, torch.Tensor], model: ParmPINN, cfg: Config) -> 
     # Replace time column with gradient-enabled t
     scalar_x_g = torch.cat([t, accel_z, thrust, v_z], dim=-1)
 
-    phi_pred, u_pred = model(scalar_x_g, stft_x, u_max=float(cfg.u_max))
+    phi_pred, u_pred = model(scalar_x_g, spectral_x, u_max=float(cfg.u_max))
 
     phys = physics_residual_loss(t=t, phi=phi_pred, u=u_pred, thrust=thrust, cfg=cfg)
     data = torch.mean((u_pred - y) ** 2)
@@ -73,4 +73,3 @@ def total_loss(batch: Dict[str, torch.Tensor], model: ParmPINN, cfg: Config) -> 
 
     parts = {"physics": phys.detach(), "data": data.detach(), "u_mag": u_mag.detach()}
     return loss, parts
-

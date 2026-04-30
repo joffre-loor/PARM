@@ -16,7 +16,7 @@ from .data import (
     prepare_training_data_from_openrocket_exports,
 )
 from .export import ParmONNXWrapper, export_onnx
-from .features import stft_features_from_window
+from .features import spectral_features_from_windows
 from .losses import physics_residual_loss, total_loss
 from .network import ParmPINN
 from .training import train_model
@@ -34,8 +34,7 @@ __all__ = [
     "load_openrocket_csv",
     "physics_residual_loss",
     "prepare_training_data_from_openrocket_exports",
-    "stft_features_from_window",
+    "spectral_features_from_windows",
     "total_loss",
     "train_model",
 ]
-

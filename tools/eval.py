@@ -37,8 +37,8 @@ def _u_stats(model: ParmPINN, loader: DataLoader, cfg: Config) -> Dict[str, floa
     us = []
     for batch in loader:
         scalar_x = batch["scalar_x"].to(cfg.device)
-        stft_x = batch["stft_x"].to(cfg.device)
-        _, u = model(scalar_x, stft_x, u_max=float(cfg.u_max))
+        spectral_x = batch["spectral_x"].to(cfg.device)
+        _, u = model(scalar_x, spectral_x, u_max=float(cfg.u_max))
         us.append(u.detach().cpu().numpy().reshape(-1))
     u = np.concatenate(us) if us else np.array([], dtype=np.float32)
     if u.size == 0:
@@ -71,7 +71,12 @@ def main() -> None:
     ap.add_argument("--out-json", type=str, default=str(Path("artifacts") / "metrics" / "eval_metrics.json"))
     args = ap.parse_args()
 
-    cfg = Config(window_size=args.window_size, fft_bins=args.fft_bins, batch_size=args.batch_size, u_max=args.u_max)
+    cfg = Config(
+        window_size=args.window_size,
+        fft_bins=args.fft_bins,
+        batch_size=args.batch_size,
+        u_max=args.u_max,
+    )
 
     # Expand inputs similarly to train.py behavior (simple glob support)
     paths = []
@@ -87,10 +92,10 @@ def main() -> None:
         raise SystemExit("No eval CSVs found.")
 
     built = prepare_training_data_from_openrocket_exports(paths, cfg)
-    ds = ParmDataset(built["scalar_x"], built["stft_x"], built["y"])
+    ds = ParmDataset(built["scalar_x"], built["spectral_x"], built["y"])
     loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False, drop_last=False)
 
-    model = ParmPINN(fft_bins=cfg.fft_bins).to(cfg.device)
+    model = ParmPINN(fft_bins=cfg.fft_bins, spectral_feature_dim=cfg.spectral_feature_dim).to(cfg.device)
     state = torch.load(args.weights, map_location=cfg.device)
     model.load_state_dict(state)
 

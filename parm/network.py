@@ -12,16 +12,16 @@ class ParmPINN(nn.Module):
 
     Input:
       - scalar_x: (B, 4) = [time, vertical_accel, thrust, vertical_velocity]
-      - stft_x:   (B, fft_bins)
+      - spectral_x: (B, spectral_feature_dim)
 
     Output:
       - phi_pred: (B, 1) latent torsional response estimate
       - u_pred:   (B, 1) corrective torque (negative torque reduction, bounded)
     """
 
-    def __init__(self, fft_bins: int, hidden: int = 128):
+    def __init__(self, fft_bins: int, spectral_feature_dim: int, hidden: int = 128):
         super().__init__()
-        in_dim = 4 + fft_bins
+        in_dim = 4 + int(spectral_feature_dim)
 
         self.backbone = nn.Sequential(
             nn.Linear(in_dim, hidden),
@@ -39,9 +39,9 @@ class ParmPINN(nn.Module):
         self.u_mag = nn.Sequential(nn.Linear(hidden, 1), nn.Sigmoid())  # (0..1)
 
     def forward(
-        self, scalar_x: torch.Tensor, stft_x: torch.Tensor, u_max: float
+        self, scalar_x: torch.Tensor, spectral_x: torch.Tensor, u_max: float
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = torch.cat([scalar_x, stft_x], dim=-1)
+        x = torch.cat([scalar_x, spectral_x], dim=-1)
         h = self.backbone(x)
 
         phi = self.phi_head(h)
@@ -51,4 +51,3 @@ class ParmPINN(nn.Module):
         # Negative torque reduction: 0 (no reduction) down to -u_max.
         u = -(u_max * gate * mag)
         return phi, u
-

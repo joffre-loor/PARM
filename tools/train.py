@@ -113,7 +113,7 @@ def main() -> None:
 
     built = prepare_training_data_from_openrocket_exports(export_paths, cfg)
     scalar_x = built["scalar_x"]
-    stft_x = built["stft_x"]
+    spectral_x = built["spectral_x"]
     y = built["y"]
 
     # Random splits happen on the *rolling-window samples* (not raw CSV rows).
@@ -123,7 +123,7 @@ def main() -> None:
 
     sx_tmp, sx_test, fx_tmp, fx_test, y_tmp, y_test = train_test_split(
         scalar_x,
-        stft_x,
+        spectral_x,
         y,
         test_size=test_size,
         random_state=args.seed,
@@ -147,7 +147,7 @@ def main() -> None:
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, drop_last=False)
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False, drop_last=False)
 
-    model = ParmPINN(fft_bins=cfg.fft_bins)
+    model = ParmPINN(fft_bins=cfg.fft_bins, spectral_feature_dim=cfg.spectral_feature_dim)
     model = train_model(model, train_loader, val_loader, cfg)
 
     out_pt = Path(args.out_pt)
@@ -168,4 +168,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

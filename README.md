@@ -19,20 +19,24 @@ The implementation lives in the `PARM/parm/` package. `PARM/model.py` re-exports
    - **Thrust** `F` (N)
    - **Vertical velocity** `v_z` (m/s)
 
-3. **Rolling-window frequency representation (STFT step)**
-- At each timestep \(i\), PARM looks back over a **rolling window** of the most recent vertical acceleration samples:
+3. **Rolling-window spectral representation (STFT step)**
+- At each timestep \(i\), PARM looks back over a **rolling window** of the most recent vertical acceleration and thrust samples:
      \[
        a_z[i-N], \dots, a_z[i-1]
      \]
-   - A Short-Time Fourier Transform (STFT)-style feature is computed from the window.
+   - A Short-Time Fourier Transform (STFT)-style feature is computed from the windows.
    - In code, this is implemented as a **Hann-windowed FFT of the rolling window** (a single STFT frame) for efficiency:
-  - See `stft_features_from_window()` in `parm/features.py` (also re-exported from `model.py`).
-   - The result is a compact **magnitude spectrum feature vector** `stft_x` used to detect frequency content associated with resonance/phase drift.
+  - See `spectral_features_from_windows()` in `parm/features.py` (also re-exported from `model.py`).
+   - The result is a compact feature vector `spectral_x` used to detect resonance and phase drift:
+     - acceleration FFT magnitude
+     - acceleration phase as cosine/sine pairs
+     - thrust-vs-acceleration cross phase as cosine/sine pairs
+     - within-window cross-phase drift as cosine/sine pairs
 
 4. **PINN controller produces a corrective torque command**
    - The neural network ingests:
      - the four physical scalars `[t, a_z, F, v_z]`, and
-     - the frequency features `stft_x`
+     - the phase-aware spectral features `spectral_x`
    - It outputs a bounded **corrective torque** \(u\) that is interpreted as a **negative torque reduction**:
      - \(u = 0\) → no reduction (baseline thrust/torque)
      - \(u = -u_{max}\) → maximum commanded reduction
@@ -55,14 +59,15 @@ Class: `ParmPINN` in `parm/network.py` (also re-exported from `model.py`)
 
 - **`scalar_x`**: shape `(B, 4)`
   - `[time, vertical_acceleration, thrust, vertical_velocity]`
-- **`stft_x`**: shape `(B, fft_bins)`
-  - windowed-FFT magnitude features from the rolling acceleration window
+- **`spectral_x`**: shape `(B, Config.spectral_feature_dim)`
+  - default shape is `(B, Config.spectral_feature_dim)`, currently `7 * fft_bins`
+  - contains acceleration magnitude, acceleration phase, thrust-vs-acceleration cross phase, and within-window phase drift
 
 ### Backbone
 
 A feed-forward MLP with `Tanh` activations:
 
-- input dim = `4 + fft_bins`
+- input dim = `4 + Config.spectral_feature_dim`
 - several hidden layers (default hidden size 128)
 
 ### Heads / outputs
@@ -121,7 +126,7 @@ Optional additional losses:
 `build_rolling_samples_from_timeseries()` creates one training sample per timestep after the rolling window “warms up”:
 
 - `scalar_x[j] = [t[i], a_z[i], thrust[i], v_z[i]]`
-- `stft_x[j] = FFT(a_z[i-window_size : i])`
+- `spectral_x[j] = spectral_features_from_windows(a_z[i-window_size : i], thrust[i-window_size : i])`
 
 ---
 
@@ -131,7 +136,7 @@ Optional additional losses:
 
 - **Inputs**
   - `scalar_x` (batch, 4)
-  - `stft_x` (batch, fft_bins)
+  - `spectral_x` (batch, `Config.spectral_feature_dim`)
 - **Output**
   - `torque_correction` (batch, 1)
 
@@ -140,6 +145,7 @@ Important design choice:
 - **STFT/FFT is intentionally NOT inside the ONNX graph**.
   - This keeps the exported controller small and predictable.
   - It also reduces inference latency on embedded targets, where FFT can be implemented with a highly optimized DSP library.
+  - On Jetson, compute the rolling FFT/cross-phase features outside the ONNX model, then pass the fixed feature vector into the controller.
 
 ---
 
@@ -220,4 +226,3 @@ These are the parameters that most directly depend on your physical system:
   - acceleration dynamics relevant to torsional resonance
 - The torque-excitation model is simplified (`tau_motor ≈ thrust * lever_arm_m`). If resonance is primarily driven by **torque ripple** rather than thrust, consider replacing this with a more direct motor torque model or logged torque telemetry.
 - The “STFT” step is implemented as a single-frame windowed FFT per timestep, which is a practical approximation of a full multi-frame STFT for embedded friendliness.
-

@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import Dataset
 
 from .config import Config
-from .features import stft_features_from_window
+from .features import spectral_features_from_windows
 
 
 def build_rolling_samples_from_timeseries(
@@ -25,7 +25,7 @@ def build_rolling_samples_from_timeseries(
 
     Each sample i (for i >= window_size) contains:
     - scalar physical inputs at time i: time, accel_z, thrust, v_z
-    - STFT/FFT features from accel_z[i-window_size:i]
+    - spectral features from accel_z/thrust rolling windows
     - optional supervised label u_label[i]
     """
     t = np.asarray(t, dtype=np.float32)
@@ -41,7 +41,7 @@ def build_rolling_samples_from_timeseries(
 
     n_samples = n - cfg.window_size
     scalar_x = np.zeros((n_samples, 4), dtype=np.float32)
-    stft_x = np.zeros((n_samples, cfg.fft_bins), dtype=np.float32)
+    spectral_x = np.zeros((n_samples, cfg.spectral_feature_dim), dtype=np.float32)
 
     y = None
     if u_label is not None:
@@ -56,14 +56,18 @@ def build_rolling_samples_from_timeseries(
         scalar_x[j, 2] = thrust[i]
         scalar_x[j, 3] = v_z[i]
 
-        stft_x[j] = stft_features_from_window(accel_z[i - cfg.window_size : i], cfg)
+        spectral_x[j] = spectral_features_from_windows(
+            accel_window=accel_z[i - cfg.window_size : i],
+            thrust_window=thrust[i - cfg.window_size : i],
+            cfg=cfg,
+        )
 
         if y is not None:
             y[j, 0] = u_label[i]
 
     return {
         "scalar_x": scalar_x,
-        "stft_x": stft_x,
+        "spectral_x": spectral_x,
         "y": y if y is not None else np.zeros((n_samples, 1), dtype=np.float32),
     }
 
@@ -73,9 +77,9 @@ class ParmDataset(Dataset):
     Each item corresponds to a timestep (after rolling window warmup) for a single flight trajectory.
     """
 
-    def __init__(self, scalar_x: np.ndarray, stft_x: np.ndarray, y: np.ndarray):
+    def __init__(self, scalar_x: np.ndarray, spectral_x: np.ndarray, y: np.ndarray):
         self.scalar_x = torch.tensor(scalar_x, dtype=torch.float32)
-        self.stft_x = torch.tensor(stft_x, dtype=torch.float32)
+        self.spectral_x = torch.tensor(spectral_x, dtype=torch.float32)
         self.y = torch.tensor(y, dtype=torch.float32)
 
     def __len__(self) -> int:
@@ -84,7 +88,7 @@ class ParmDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         return {
             "scalar_x": self.scalar_x[idx],  # (4,)
-            "stft_x": self.stft_x[idx],  # (fft_bins,)
+            "spectral_x": self.spectral_x[idx],  # (spectral_feature_dim,)
             "y": self.y[idx],  # (1,)
         }
 
@@ -330,7 +334,7 @@ def prepare_training_data_from_openrocket_exports(
     provide them in u_label_by_path keyed by path string.
     """
     scalar_all: List[np.ndarray] = []
-    stft_all: List[np.ndarray] = []
+    spectral_all: List[np.ndarray] = []
     y_all: List[np.ndarray] = []
 
     for p in export_paths:
@@ -357,7 +361,7 @@ def prepare_training_data_from_openrocket_exports(
                 raise
 
             scalar_all.append(built["scalar_x"])
-            stft_all.append(built["stft_x"])
+            spectral_all.append(built["spectral_x"])
             y_all.append(built["y"])
 
     if not scalar_all:
@@ -365,7 +369,6 @@ def prepare_training_data_from_openrocket_exports(
 
     return {
         "scalar_x": np.concatenate(scalar_all, axis=0),
-        "stft_x": np.concatenate(stft_all, axis=0),
+        "spectral_x": np.concatenate(spectral_all, axis=0),
         "y": np.concatenate(y_all, axis=0),
     }
-

@@ -3,7 +3,7 @@ Build shuffled train/val/test sample datasets from one or more OpenRocket CSV ex
 
 Why this exists:
 - Do NOT shuffle raw CSV rows (breaks rolling-window FFT features).
-- Instead, build rolling-window samples (scalar_x, stft_x, y placeholder), then shuffle/split samples.
+- Instead, build rolling-window samples (scalar_x, spectral_x, y placeholder), then shuffle/split samples.
 
 Usage (from inside PARM/):
   python -m tools.build_dataset --exports "data\\aggregate\\train.csv"
@@ -69,9 +69,9 @@ def _split_indices(n: int, val_frac: float, test_frac: float, seed: int) -> tupl
     return train_idx, val_idx, test_idx
 
 
-def _save_npz(path: Path, scalar_x: np.ndarray, stft_x: np.ndarray, y: np.ndarray) -> None:
+def _save_npz(path: Path, scalar_x: np.ndarray, spectral_x: np.ndarray, y: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, scalar_x=scalar_x, stft_x=stft_x, y=y)
+    np.savez_compressed(path, scalar_x=scalar_x, spectral_x=spectral_x, y=y)
 
 
 def main() -> None:
@@ -95,20 +95,24 @@ def main() -> None:
     built = prepare_training_data_from_openrocket_exports(export_paths, cfg)
 
     scalar_x = built["scalar_x"]
-    stft_x = built["stft_x"]
+    spectral_x = built["spectral_x"]
     y = built["y"]
 
     n = int(scalar_x.shape[0])
     train_idx, val_idx, test_idx = _split_indices(n=n, val_frac=float(args.val_frac), test_frac=float(args.test_frac), seed=int(args.seed))
 
     out_dir = Path(args.out_dir)
-    _save_npz(out_dir / "train.npz", scalar_x[train_idx], stft_x[train_idx], y[train_idx])
-    _save_npz(out_dir / "val.npz", scalar_x[val_idx], stft_x[val_idx], y[val_idx])
-    _save_npz(out_dir / "test.npz", scalar_x[test_idx], stft_x[test_idx], y[test_idx])
+    _save_npz(out_dir / "train.npz", scalar_x[train_idx], spectral_x[train_idx], y[train_idx])
+    _save_npz(out_dir / "val.npz", scalar_x[val_idx], spectral_x[val_idx], y[val_idx])
+    _save_npz(out_dir / "test.npz", scalar_x[test_idx], spectral_x[test_idx], y[test_idx])
 
     manifest = {
         "exports": [str(p.as_posix()) for p in export_paths],
-        "config": {"window_size": int(cfg.window_size), "fft_bins": int(cfg.fft_bins)},
+        "config": {
+            "window_size": int(cfg.window_size),
+            "fft_bins": int(cfg.fft_bins),
+            "spectral_feature_dim": int(cfg.spectral_feature_dim),
+        },
         "seed": int(args.seed),
         "val_frac": float(args.val_frac),
         "test_frac": float(args.test_frac),
@@ -127,4 +131,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
