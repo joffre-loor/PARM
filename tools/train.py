@@ -76,6 +76,18 @@ def main() -> None:
     ap.add_argument("--gamma", type=float, default=0.0, help="Torsional damping [N*m*s/rad]")
     ap.add_argument("--lever-arm-m", type=float, default=0.05, help="Thrust->torque lever arm [m]")
     ap.add_argument("--u-max", type=float, default=5.0, help="Max corrective torque magnitude [N*m]")
+    ap.add_argument("--lambda-physics", type=float, default=1.0, help="Physics residual loss weight.")
+    ap.add_argument("--lambda-data", type=float, default=2.0, help="Heuristic/supervised torque-label loss weight.")
+    ap.add_argument("--lambda-u-mag", type=float, default=2e-2, help="Small-control regularization weight.")
+    ap.add_argument("--no-heuristic-labels", action="store_true", help="Disable spectral-risk pseudo-labels.")
+    ap.add_argument("--risk-low-quantile", type=float, default=0.60, help="Risk quantile below which target correction is zero.")
+    ap.add_argument("--risk-high-quantile", type=float, default=0.95, help="Risk quantile mapped to max heuristic correction.")
+    ap.add_argument(
+        "--heuristic-u-max-fraction",
+        type=float,
+        default=0.35,
+        help="Fraction of u_max used by the strongest heuristic torque target.",
+    )
 
     ap.add_argument("--early-stop-patience", type=int, default=25, help="Stop if val loss plateaus for N epochs (0 disables).")
     ap.add_argument("--early-stop-min-delta", type=float, default=1e-4, help="Required val-loss improvement to reset patience.")
@@ -107,6 +119,13 @@ def main() -> None:
         gamma=args.gamma,
         lever_arm_m=args.lever_arm_m,
         u_max=args.u_max,
+        lambda_physics=args.lambda_physics,
+        lambda_data=args.lambda_data,
+        lambda_u_mag=args.lambda_u_mag,
+        use_heuristic_u_labels=not args.no_heuristic_labels,
+        risk_low_quantile=args.risk_low_quantile,
+        risk_high_quantile=args.risk_high_quantile,
+        heuristic_u_max_fraction=args.heuristic_u_max_fraction,
         early_stop_patience=args.early_stop_patience,
         early_stop_min_delta=args.early_stop_min_delta,
     )

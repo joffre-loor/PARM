@@ -83,6 +83,10 @@ def main() -> None:
 
     ap.add_argument("--window-size", type=int, default=128)
     ap.add_argument("--fft-bins", type=int, default=64)
+    ap.add_argument("--no-heuristic-labels", action="store_true", help="Disable spectral-risk pseudo-labels.")
+    ap.add_argument("--risk-low-quantile", type=float, default=0.60)
+    ap.add_argument("--risk-high-quantile", type=float, default=0.95)
+    ap.add_argument("--heuristic-u-max-fraction", type=float, default=0.35)
 
     ap.add_argument("--out-dir", type=str, default=str(Path("artifacts") / "datasets"))
     args = ap.parse_args()
@@ -91,7 +95,14 @@ def main() -> None:
     if not export_paths:
         raise SystemExit("No export CSVs found.")
 
-    cfg = Config(window_size=args.window_size, fft_bins=args.fft_bins)
+    cfg = Config(
+        window_size=args.window_size,
+        fft_bins=args.fft_bins,
+        use_heuristic_u_labels=not args.no_heuristic_labels,
+        risk_low_quantile=args.risk_low_quantile,
+        risk_high_quantile=args.risk_high_quantile,
+        heuristic_u_max_fraction=args.heuristic_u_max_fraction,
+    )
     built = prepare_training_data_from_openrocket_exports(export_paths, cfg)
 
     scalar_x = built["scalar_x"]
@@ -112,6 +123,10 @@ def main() -> None:
             "window_size": int(cfg.window_size),
             "fft_bins": int(cfg.fft_bins),
             "spectral_feature_dim": int(cfg.spectral_feature_dim),
+            "use_heuristic_u_labels": bool(cfg.use_heuristic_u_labels),
+            "risk_low_quantile": float(cfg.risk_low_quantile),
+            "risk_high_quantile": float(cfg.risk_high_quantile),
+            "heuristic_u_max_fraction": float(cfg.heuristic_u_max_fraction),
         },
         "seed": int(args.seed),
         "val_frac": float(args.val_frac),

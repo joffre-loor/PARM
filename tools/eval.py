@@ -68,6 +68,12 @@ def main() -> None:
     ap.add_argument("--fft-bins", type=int, default=64)
     ap.add_argument("--batch-size", type=int, default=256)
     ap.add_argument("--u-max", type=float, default=5.0)
+    ap.add_argument("--lambda-physics", type=float, default=1.0)
+    ap.add_argument("--lambda-data", type=float, default=2.0)
+    ap.add_argument("--lambda-u-mag", type=float, default=2e-2)
+    ap.add_argument("--risk-low-quantile", type=float, default=0.60)
+    ap.add_argument("--risk-high-quantile", type=float, default=0.95)
+    ap.add_argument("--heuristic-u-max-fraction", type=float, default=0.35)
     ap.add_argument("--out-json", type=str, default=str(Path("artifacts") / "metrics" / "eval_metrics.json"))
     args = ap.parse_args()
 
@@ -76,6 +82,12 @@ def main() -> None:
         fft_bins=args.fft_bins,
         batch_size=args.batch_size,
         u_max=args.u_max,
+        lambda_physics=args.lambda_physics,
+        lambda_data=args.lambda_data,
+        lambda_u_mag=args.lambda_u_mag,
+        risk_low_quantile=args.risk_low_quantile,
+        risk_high_quantile=args.risk_high_quantile,
+        heuristic_u_max_fraction=args.heuristic_u_max_fraction,
     )
 
     # Expand inputs similarly to train.py behavior (simple glob support)

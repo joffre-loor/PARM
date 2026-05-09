@@ -12,6 +12,54 @@ from .config import Config
 from .features import spectral_features_from_windows
 
 
+def risk_score_from_spectral_features(spectral_x: np.ndarray, cfg: Config) -> np.ndarray:
+    """
+    Model-independent resonance/phase-risk proxy in [0, 1].
+
+    This is not a flight-certification metric. It is a practical label source
+    for the current open-loop simulation data, where true closed-loop torque
+    correction targets are not available.
+    """
+    x = np.asarray(spectral_x, dtype=np.float32)
+    if x.ndim != 2 or x.shape[1] != cfg.spectral_feature_dim:
+        raise ValueError(f"spectral_x must have shape (N, {cfg.spectral_feature_dim})")
+
+    bins = int(cfg.fft_bins)
+    mag = x[:, :bins]
+    cross_cos = x[:, 3 * bins : 4 * bins]
+    drift_cos = x[:, 5 * bins : 6 * bins]
+
+    band_energy = np.max(mag, axis=1)
+    cross_alignment = np.max(cross_cos, axis=1)
+    phase_stability = np.max(drift_cos, axis=1)
+
+    def norm01(v: np.ndarray) -> np.ndarray:
+        lo = float(np.quantile(v, 0.05))
+        hi = float(np.quantile(v, 0.95))
+        return np.clip((v - lo) / max(hi - lo, 1e-9), 0.0, 1.0)
+
+    risk = 0.70 * norm01(band_energy) + 0.15 * norm01(cross_alignment) + 0.15 * norm01(phase_stability)
+    return np.clip(risk, 0.0, 1.0).astype(np.float32)
+
+
+def heuristic_u_labels_from_spectral_features(spectral_x: np.ndarray, cfg: Config) -> np.ndarray:
+    """
+    Builds pseudo-labels for torque correction from spectral risk.
+
+    Low-risk windows are labeled near 0. High-risk windows ramp toward a bounded
+    negative correction. This prevents the PINN from learning a constant small
+    reduction as the easiest solution.
+    """
+    risk = risk_score_from_spectral_features(spectral_x, cfg)
+    low = float(np.quantile(risk, cfg.risk_low_quantile))
+    high = float(np.quantile(risk, cfg.risk_high_quantile))
+    scaled = np.clip((risk - low) / max(high - low, 1e-9), 0.0, 1.0)
+    # Smooth ramp: weak response just above threshold, stronger near highest-risk windows.
+    scaled = scaled**2
+    max_reduction = float(cfg.u_max) * float(cfg.heuristic_u_max_fraction)
+    return (-max_reduction * scaled).astype(np.float32).reshape(-1, 1)
+
+
 def build_rolling_samples_from_timeseries(
     t: np.ndarray,
     accel_z: np.ndarray,
@@ -367,8 +415,13 @@ def prepare_training_data_from_openrocket_exports(
     if not scalar_all:
         raise ValueError("No usable trajectories found (all shorter than window_size or empty).")
 
+    spectral_x = np.concatenate(spectral_all, axis=0)
+    y = np.concatenate(y_all, axis=0)
+    if u_label_by_path is None and cfg.use_heuristic_u_labels:
+        y = heuristic_u_labels_from_spectral_features(spectral_x, cfg)
+
     return {
         "scalar_x": np.concatenate(scalar_all, axis=0),
-        "spectral_x": np.concatenate(spectral_all, axis=0),
-        "y": np.concatenate(y_all, axis=0),
+        "spectral_x": spectral_x,
+        "y": y,
     }

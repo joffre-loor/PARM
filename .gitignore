@@ -28,13 +28,17 @@ desktop.ini
 .cursor/
 
 # PARM generated data/artifacts (keep folder structure via .gitkeep)
-PARM/data/**
-!PARM/data/.gitkeep
-!PARM/data/**/.gitkeep
+data/**
+!data/.gitkeep
+!data/**/.gitkeep
 
-PARM/artifacts/**
-!PARM/artifacts/.gitkeep
-!PARM/artifacts/**/.gitkeep
+artifacts/**
+!artifacts/.gitkeep
+!artifacts/**/.gitkeep
+
+# Runtime scratch files from deployment examples
+runtime_logs/
+runtime_cache/
 
 # Model artifacts (anywhere)
 *.onnx
@@ -43,4 +47,3 @@ PARM/artifacts/**
 
 # Logs
 *.log
-

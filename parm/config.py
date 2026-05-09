@@ -29,11 +29,21 @@ class Config:
 
     # Controller output limits (torque reduction magnitude)
     u_max: float = 5.0  # [N*m] max magnitude of corrective torque (applied as negative reduction)
+    u_deadband: float = 0.05  # [N*m] corrections smaller than this are commanded as exactly zero
+    u_rate_limit_per_s: float = 8.0  # [N*m/s] max correction change rate after deadband
+    u_filter_alpha: float = 0.35  # low-pass blend for command smoothing (1 disables smoothing)
+
+    # Heuristic training labels from spectral risk. These are used until real
+    # torque-correction labels or closed-loop targets are available.
+    use_heuristic_u_labels: bool = True
+    risk_low_quantile: float = 0.60
+    risk_high_quantile: float = 0.95
+    heuristic_u_max_fraction: float = 0.35
 
     # Loss weights
     lambda_physics: float = 1.0
-    lambda_data: float = 0.0  # optional supervised torque targets if available later
-    lambda_u_mag: float = 1e-3  # discourage aggressive control
+    lambda_data: float = 2.0
+    lambda_u_mag: float = 2e-2  # discourage aggressive control
 
     # Early stopping (on validation total loss)
     early_stop_patience: int = 25

@@ -140,12 +140,94 @@ Optional additional losses:
 - **Output**
   - `torque_correction` (batch, 1)
 
+The exported ONNX file uses explicit names:
+
+```text
+Input 1: scalar_x   float32[batch_size, 4]
+Input 2: spectral_x float32[batch_size, 448]  # with fft_bins=64
+Output:  torque_correction float32[batch_size, 1]
+```
+
+`scalar_x` order:
+
+```text
+[time_s, vertical_acceleration_m_per_s2, thrust_n, vertical_velocity_m_per_s]
+```
+
+`spectral_x` is generated outside the ONNX graph from the most recent acceleration
+and thrust windows using `spectral_features_from_windows()`.
+
+The ONNX output is the raw model correction. Flight software should condition it
+before sending an actuator command:
+
+```python
+from parm import Config, TorqueCommandFilter
+
+cfg = Config()
+filter = TorqueCommandFilter(cfg)
+
+raw_u = onnx_output_torque_correction
+u = filter.update(raw_u=raw_u, dt_s=control_loop_dt_s)
+commanded_torque = clamp(nominal_torque + u, min_torque, nominal_torque)
+```
+
+This applies:
+- `Config.u_deadband`: tiny reductions become exactly `0`
+- `Config.u_filter_alpha`: low-pass smoothing
+- `Config.u_rate_limit_per_s`: max correction change per second
+- final reduction-only clamping so PARM cannot increase torque
+
 Important design choice:
 
 - **STFT/FFT is intentionally NOT inside the ONNX graph**.
   - This keeps the exported controller small and predictable.
   - It also reduces inference latency on embedded targets, where FFT can be implemented with a highly optimized DSP library.
   - On Jetson, compute the rolling FFT/cross-phase features outside the ONNX model, then pass the fixed feature vector into the controller.
+
+Inspect the exported model contract:
+
+```bash
+python -m tools.onnx_contract --onnx "artifacts\\onnx\\parm_controller.onnx"
+```
+
+The ONNX file also contains metadata for the input layout, feature width, window
+size, FFT bins, output meaning, and required post-processing.
+
+### Jetson runtime wrapper
+
+Use [deployment/jetson_runtime_example.py](deployment/jetson_runtime_example.py)
+as the integration template. The ONNX file stays stateless; the wrapper owns:
+
+- rolling acceleration/thrust windows
+- `spectral_x` construction
+- ONNX inference
+- deadband, smoothing, rate limiting
+- final reduction-only torque clamp
+
+Flight-code usage shape:
+
+```python
+from deployment.jetson_runtime_example import OnnxParmRuntime
+
+parm = OnnxParmRuntime(
+    onnx_path="artifacts/onnx/parm_controller.onnx",
+    min_torque=0.0,
+)
+
+state = parm.update(
+    time_s=t,
+    vertical_acceleration_mps2=accel_z,
+    thrust_n=thrust,
+    vertical_velocity_mps=v_z,
+    nominal_torque_nm=nominal_torque,
+    dt_s=dt,
+)
+
+commanded_torque = state["commanded_torque_nm"]
+```
+
+Before the rolling window fills, `state["ready"]` is `False` and the wrapper
+returns zero correction.
 
 ---
 
@@ -199,6 +281,43 @@ This prints and writes `artifacts/metrics/eval_metrics.json` containing:
 - mean total loss
 - mean physics residual loss
 - basic statistics of the controller output (torque reduction)
+
+### Showcase example
+
+Generate a held-out example plot:
+
+```bash
+python -m tools.showcase_example --weights "artifacts\\weights\\parm_controller.pt" --exports "data\\aggregate\\test.csv"
+```
+
+Example selected from the current held-out test split:
+
+![PARM held-out test example](artifacts/examples/parm_showcase_example.svg)
+
+Decision-window detail:
+
+![PARM decision-window example](artifacts/examples/parm_showcase_decision_window.svg)
+
+Summary for this example:
+
+- Source: `data/aggregate/test.csv`
+- Simulation: `simulation_005_8e0648486020447494199b72a602d961`
+- Samples after rolling-window warmup: `1396`
+- Conditioned command active samples: `160`
+- Conditioned command zero samples: `1236`
+- Active fraction: `11.5%`
+- Mean risk while active: `0.788`
+- Mean risk while inactive: `0.259`
+- Median conditioned torque correction: `0.0 N*m`
+- Strongest conditioned torque correction: `-1.734 N*m`
+- Decision-window range: `2.996s` to `12.996s`
+- Decision-window peak risk: `1.0`
+
+This is the intended command shape: PARM stays at zero through most of the flight,
+then applies a temporary negative torque correction during a concentrated risk
+window. The decision-window plot shows what the correction is based on:
+resonance-band energy, forcing/response phase alignment, phase stability, and
+the combined risk score.
 
 ## What you must tune for your motor / structure
 
